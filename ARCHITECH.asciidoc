@@ -74,50 +74,130 @@ BE --> FE: Feedback to User
 
 The database will include the following tables:
 
-1. **Category**: Organizes questions by topic, allowing users to focus on specific language-use contexts, like greetings, directions, or dining.
-   - `category_id`: Primary Key
-   - `name`: Name of the category (e.g., "Common", "Map Directions")
+== Users and Profiles
 
-2. **Question**: Stores the long-form questions in English, prompting users to select the correct Kazakh translation.
-   - `question_id`: Primary Key
-   - `category_id`: Foreign Key to Category
-   - `prompt`: Text for the question (e.g., "How to greet someone?")
-   - `correct_translation`: Text of the correct Kazakh phrase
-   - `difficulty_level`: Enum for the difficulty level (beginner, intermediate, advanced)
+[cols="1,1,1,1"]
+|===
+| Table | Field | Type | Description
 
-3. **Option**: Holds the multiple-choice answers for each question, including one correct answer and three distractors.
-   - `option_id`: Primary Key
-   - `question_id`: Foreign Key to Question
-   - `option_text`: Text of each option (Kazakh phrase)
-   - `is_correct`: Boolean indicating whether this option is the correct translation
+| User 
+| user_id | SERIAL PRIMARY KEY | Unique identifier for the user
+| username | VARCHAR(50) UNIQUE NOT NULL | Username, unique per user
+| email | VARCHAR(100) | User email address
+| created_at | TIMESTAMP DEFAULT CURRENT_TIMESTAMP | Account creation timestamp
 
-4. **Quiz**: Pre-compiled sets of questions that users complete to test their knowledge.
-   - `quiz_id`: Primary Key
-   - `category_id`: Foreign Key to Category
-   - `difficulty_level`: Enum (beginner, intermediate, advanced)
-   - `num_questions`: Number of questions in the quiz
-   - `time_limit`: Time limit for completing the quiz (e.g., 3 minutes)
-   - `questions`: JSON array of question IDs, maintaining the set for this quiz
-   - `passing_criteria`: Integer specifying the number of correct answers needed to pass
+| UserProfile 
+| user_profile_id | SERIAL PRIMARY KEY | Unique identifier for the user profile
+| user_id | INT REFERENCES User(user_id) | Foreign key linking to the user
+| language_preference | VARCHAR(50) | Preferred language for user interface
+| timezone | VARCHAR(50) | User's time zone
+| other_preferences | JSONB | JSON field for additional user settings
+|===
 
-5. **User**: Stores user profile data, along with accuracy and speed metrics.
-   - `user_id`: Primary Key
-   - `username`: Unique identifier
-   - `email`: Optional email address
-   - `created_at`: Timestamp for user creation
+== Categories and Questions
 
-6. **QuizAttempt**: Logs each user's interaction with quizzes, tracking overall performance per attempt.
-   - `quiz_attempt_id`: Primary Key
-   - `user_id`: Foreign Key to User
-   - `quiz_id`: Foreign Key to Quiz
-   - `attempted_at`: Timestamp marking when the quiz was started
-   - `completed_at`: Timestamp marking when the quiz was completed
-   - `total_correct`: Integer counting correct answers in the quiz attempt
-   - `total_incorrect`: Integer counting incorrect answers
-   - `total_time_taken`: Time in seconds for quiz completion
-   - `accuracy`: Calculated as `total_correct / num_questions`
-   - `passed`: Boolean indicating if the quiz met the passing criteria (based on correct answers)
+[cols="1,1,1,1"]
+|===
+| Table | Field | Type | Description
 
+| Category 
+| category_id | SERIAL PRIMARY KEY | Unique identifier for the category
+| name | VARCHAR(50) NOT NULL | Category name, e.g., "Greetings", "Directions"
+
+| Question 
+| question_id | SERIAL PRIMARY KEY | Unique identifier for the question
+| category_id | INT REFERENCES Category(category_id) | Foreign key linking to the category
+| prompt | TEXT NOT NULL | Question text, e.g., "How to greet someone?"
+| correct_translation | TEXT | Correct translation in Kazakh
+| options | JSONB NOT NULL | JSON array of answer options, with one marked as correct
+| hint | TEXT | Hint for the question, if applicable
+| difficulty_level | VARCHAR(20) | Difficulty level, e.g., "beginner", "intermediate"
+| created_at | TIMESTAMP DEFAULT CURRENT_TIMESTAMP | Timestamp for question creation
+| updated_at | TIMESTAMP DEFAULT CURRENT_TIMESTAMP | Timestamp for last question update
+|===
+
+== Quiz and Attempts
+
+[cols="1,1,1,1"]
+|===
+| Table | Field | Type | Description
+
+| Quiz 
+| quiz_id | SERIAL PRIMARY KEY | Unique identifier for the quiz
+| category_id | INT REFERENCES Category(category_id) | Foreign key linking to the category
+| difficulty_level | VARCHAR(20) | Difficulty level of the quiz
+| num_questions | INT | Number of questions in the quiz
+| time_limit | INT | Time limit for the quiz in seconds
+
+| QuizAttempt 
+| quiz_attempt_id | SERIAL PRIMARY KEY | Unique identifier for the quiz attempt
+| user_id | INT REFERENCES User(user_id) | Foreign key linking to the user
+| quiz_id | INT REFERENCES Quiz(quiz_id) | Foreign key linking to the quiz
+| attempted_at | TIMESTAMP DEFAULT CURRENT_TIMESTAMP | Timestamp when the quiz attempt started
+| completed_at | TIMESTAMP | Timestamp when the quiz attempt completed
+| total_correct | INT | Count of correct answers in this attempt
+| total_incorrect | INT | Count of incorrect answers in this attempt
+| total_time_taken | INT | Total time taken in seconds
+| accuracy | FLOAT | Accuracy percentage for the quiz attempt
+| passed | BOOLEAN | Indicates if the attempt met the passing criteria
+
+| QuizQuestionAttempt 
+| quiz_question_attempt_id | SERIAL PRIMARY KEY | Unique identifier for the question attempt
+| quiz_attempt_id | INT REFERENCES QuizAttempt(quiz_attempt_id) | Foreign key linking to the quiz attempt
+| question_id | INT REFERENCES Question(question_id) | Foreign key linking to the question
+| selected_option_id | INT | ID of the selected answer option
+| is_correct | BOOLEAN | Indicates if the selected option is correct
+|===
+
+== Progress and Achievements
+
+[cols="1,1,1,1"]
+|===
+| Table | Field | Type | Description
+
+| UserProgress 
+| progress_id | SERIAL PRIMARY KEY | Unique identifier for progress tracking
+| user_id | INT REFERENCES User(user_id) | Foreign key linking to the user
+| difficulty_level | VARCHAR(20) | Difficulty level tracked in progress
+| category_id | INT REFERENCES Category(category_id) | Foreign key linking to the category
+| quizzes_completed | INT | Number of completed quizzes in this category and level
+| quizzes_passed | INT | Number of successfully passed quizzes
+| best_accuracy | FLOAT | Best accuracy percentage achieved by the user
+| average_time_per_question | FLOAT | Average time taken per question in this category and level
+
+| Badge 
+| badge_id | SERIAL PRIMARY KEY | Unique identifier for the badge
+| name | VARCHAR(50) NOT NULL | Badge name, e.g., "Beginner Mastery"
+| description | TEXT | Description of the badge criteria
+| requirements | JSONB | JSON field specifying criteria for earning the badge
+
+| UserBadge 
+| user_badge_id | SERIAL PRIMARY KEY | Unique identifier for awarded badges
+| user_id | INT REFERENCES User(user_id) | Foreign key linking to the user
+| badge_id | INT REFERENCES Badge(badge_id) | Foreign key linking to the badge
+| awarded_at | TIMESTAMP DEFAULT CURRENT_TIMESTAMP | Timestamp when the badge was awarded
+|===
+
+== Leaderboards and Statistics
+
+[cols="1,1,1,1"]
+|===
+| Table | Field | Type | Description
+
+| UserStats 
+| user_stats_id | SERIAL PRIMARY KEY | Unique identifier for the user's stats
+| user_id | INT REFERENCES User(user_id) | Foreign key linking to the user
+| total_quizzes_completed | INT | Total number of quizzes completed by the user
+| average_accuracy | FLOAT | Average accuracy of all completed quizzes
+| average_speed | FLOAT | Average time per question for the user
+|===
+
+== Indexes and Optimization
+
+1. Create indexes on key columns, such as `user_id`, `question_id`, and `category_id`, to improve query performance.
+2. Implement a composite index on `difficulty_level` and `category_id` in the `Question` table if queries frequently filter by both fields.
+
+   
 === Key Algorithms and Quiz Flow
 
 #### Quiz Generation and Start
@@ -127,6 +207,13 @@ The database will include the following tables:
   - **Question Order**: The list of questions in the quiz is randomized.
   - **Option Order**: For each question, the position of the four options is also shuffled.
   - This ensures users cannot memorize option patterns to pass the quiz without learning.
+- **Progress Tracking**: 
+   - After each `QuizAttempt`, update the `UserProgress` table to increment `quizzes_completed` and, if passed, `quizzes_passed`.
+   - Check the user's cumulative quizzes to determine if they meet criteria for difficulty level upgrades.
+
+- **Badge Assignment**:
+   - For milestones such as passing all beginner-level quizzes in a category, assign a badge.
+   - Update the `UserProgress` table to mark `badge_awarded` as `True` and log the specific `badge_id` in the user profile.
 
 #### Answer Validation and User Progress Tracking
 - **Answer Submission**: When a user submits an answer for a question, the backend checks `is_correct` in the `Option` table to validate it.
@@ -170,14 +257,17 @@ This section outlines the implementation steps needed to build the Language Tran
      - **Option**
      - **Quiz**
      - **User**
-     - **QuizAttempt** (formerly `UserQuiz`)
+     - **QuizAttempt**
+     - **UserProgress**
+     - **Badge**
 
 3. **Migrations**:
    - Run migrations to set up the database schema.
 
 4. **API Setup with Django Ninja**:
    - Configure Django Ninja for RESTful API management.
-   - Set up type-safe endpoints for quiz generation, question validation, user profile retrieval, and leaderboard data.
+   - Set up type-safe endpoints for quiz generation, question validation, user profile retrieval, leaderboard data, and progress tracking.
+   - Include endpoints for retrieving badges and checking progress toward level or badge achievements.
 
 === Step 2: Key API Endpoints
 
@@ -228,21 +318,61 @@ The following endpoints will handle the main functionalities of the quiz game:
    - **Process**:
      - Retrieve `QuizAttempt` records and calculate leaderboard rankings based on average accuracy and average time taken.
 
+6. **Endpoint: Check Progress**
+   - **URL**: `/api/user/progress`
+   - **Method**: `GET`
+   - **Response**: Returns user progress, showing quizzes completed, quizzes passed, and earned badges.
+   - **Process**: 
+      - Retrieve data from `UserProgress` and `Badge` tables.
+      - Check if additional badges or level advancements are eligible, returning relevant progress data for the frontend.
+
+7. **Update Complete Quiz Endpoint**
+   - **Process Update**: After validating the quiz results, update `UserProgress` to increment completed and passed quizzes.
+   - Check if this quiz completion triggers a new badge or level advancement based on cumulative data, and update `Badge` records as needed.
+
 === Step 3: Frontend with Svelte
 
 1. **Svelte Project Setup**:
    - Initialize a new Svelte project for the frontend.
 
 2. **UI Components**:
-   - **Quiz Component**: Displays questions and options, receives responses, and shows feedback.
+   - **Quiz Component**: Displays questions and options, receives responses, and shows feedback, highlighting progress toward badges or level advancements when applicable.
    - **Timer Component**: Tracks remaining time and triggers quiz completion if the time limit is reached.
    - **Leaderboard Component**: Displays top users and refreshes based on backend data.
-   - **Profile Component**: Shows user statistics, progress, and history of quiz attempts.
+   - **Profile Component**: Shows user statistics, including quizzes completed, quizzes passed, accuracy, and earned badges.
+   - **Badge Display Component**: Displays earned badges and progress toward new badges, providing visual feedback for achievements and learning milestones.
 
-3. **API Integration**:
+3. **Modular Component Structure**:
+   - **Main Quiz Page Layout**:
+     - **QuizPage.svelte**: Acts as the main layout or container for the quiz, responsible for fetching quiz data, displaying feedback, and coordinating interactions between various components.
+     - **Children Components**:
+       - **QuestionDisplay.svelte**: Displays each question and its options.
+       - **AnswerFeedback.svelte**: Shows feedback (correct/incorrect) and hints when the user answers a question.
+       - **ProgressTracker.svelte**: Displays the current progress in the quiz (e.g., question number out of total).
+   - **Reusable Components within the Quiz**:
+     - **QuestionPrompt.svelte**: Displays the text prompt for each question. This component can be used across different quiz types if more question formats are added.
+     - **OptionButton.svelte**: A button component for each answer option, including styling, selection state, and any accessibility features.
+     - **AnswerFeedback.svelte**: Displays feedback (e.g., correct/incorrect animations or text) when an answer is submitted. It can also expand to show hints or additional context if the answer is incorrect.
+     - **HintButton.svelte**: For displaying hints when a user requests help, with easy modification to add additional hint features.
+   - **Tracking and Scoring Components**:
+     - **ProgressTracker.svelte**: Tracks and displays the user’s current question number, accuracy, and time remaining.
+     - **Timer.svelte**: A dedicated timer component for tracking and displaying the remaining quiz time.
+     - **ScoreSummary.svelte**: A summary screen at the end of the quiz, displaying the user’s score, speed, and accuracy.
+   - **Profile and Leaderboard Components**:
+     - **ProfilePage.svelte**: A page component that displays user-specific data, such as their statistics and badges earned.
+       - **ProfileStats.svelte**: Displays user’s quiz stats, like average accuracy and time.
+       - **BadgeList.svelte**: Shows badges the user has earned, as well as locked badges to encourage progress.
+     - **Leaderboard.svelte**: For displaying ranked user data with filters like top scores for different difficulty levels.
+   - **General Utility Components**:
+     - **Modal.svelte**: For popup messages, such as confirmation dialogs or explanations when a user requests help.
+     - **LoadingSpinner.svelte**: Displays loading animations while data is being fetched.
+     - **Notification.svelte**: Generic component to show in-app notifications, such as "Quiz completed!" or "New badge earned!"
+
+4. **API Integration**:
    - Set up API calls to each endpoint.
    - Handle quiz start, answer submission, and completion with data passed to the backend.
-   - Display real-time feedback and track progress based on backend responses.
+   - Display real-time feedback, track user progress, and show badge achievements or level advancements based on backend responses.
+
 
 === Step 4: Testing and Quality Assurance
 
@@ -335,3 +465,4 @@ The following milestones break down the development process into actionable phas
   - Refine question and option handling, adjust passing criteria if needed.
   - Implement updates to UI/UX and backend logic based on user insights.
 - **Expected Output**: Improved and finalized application based on real user feedback.
+
