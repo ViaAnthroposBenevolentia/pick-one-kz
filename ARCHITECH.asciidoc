@@ -2,15 +2,13 @@
 :sectnums:
 :toc:
 
-
 == Background
 
 The Language Translation Quiz game is designed as an interactive tool to aid language learners, specifically targeting users interested in practical Kazakh phrases. The primary goal is to create an engaging experience that supports tourists, students, and language enthusiasts in building a foundational vocabulary. Through multiple-choice quizzes and progressive difficulty levels, users can learn at their own pace while tracking improvement over time.
 
-The game aims to serve as an accessible entry point into language learning by focusing on essential, everyday phrases, making it an effective tool for users who are new to the language or have limited time to dedicate to structured study. Additionally, with features like immediate feedback, hints, and leaderboards, the game encourages regular practice and fosters a sense of achievement.
+The game aims to serve as an accessible entry point into language learning by focusing on essential, everyday phrases, making it an effective tool for users who are new to the language or have limited time to dedicate to structured study. Additionally, with features like immediate feedback, hints, leaderboards, and social sharing, the game encourages regular practice and fosters a sense of achievement.
 
 This phased approach to features ensures a steady progression from foundational to advanced levels, allowing for skill development and user retention.
-
 
 == Requirements
 
@@ -20,6 +18,7 @@ The Language Translation Quiz game has a set of core features and enhancements t
 - **Multiple-Choice Translation Quizzes**: Enable users to select the correct Kazakh translation for English phrases with four choices, focusing on practical, everyday phrases.
 - **Immediate Feedback**: Provide instant confirmation on user responses to encourage retention and learning.
 - **User Profiles**: Allow each user to have a profile that tracks accuracy, speed, and overall progress over time.
+- **Secure Authentication**: Implement secure user authentication using Django's built-in system, including password hashing and session management.
 - **Backend and Frontend Setup**: Set up Django and Django Ninja for backend API management and Svelte for a responsive, user-friendly frontend interface.
 - **Database Management**: Use PostgreSQL to store user data, quiz questions, translations, and progress tracking information.
 
@@ -28,26 +27,31 @@ The Language Translation Quiz game has a set of core features and enhancements t
 - **Hints Feature**: Include a hint button offering subtle clues to assist users without revealing the answer directly.
 - **Progress Tracking and Analytics**: Allow users to review their performance, track milestones, and identify areas for improvement.
 - **Local Leaderboard**: Display a leaderboard to foster friendly competition among users.
+- **Internationalization Support**: Design the system to support multiple languages for future expansions beyond Kazakh-English.
 
 === Could Have
 - **Global Leaderboard with Challenges**: Introduce a global leaderboard and periodic challenges to gamify the experience and encourage engagement.
 - **Mobile and Offline Access**: Optimize for mobile and enable offline access for on-the-go learning.
 - **Social Sharing**: Provide users with the option to share quiz results or progress on social media to promote the app.
+- **Adaptive Learning Paths**: Implement algorithms that adjust difficulty based on user performance to personalize the learning experience.
 
 === Won't Have
 - **Advanced Language Pair Options**: Expanding beyond Kazakh-English translations may be outside the initial project scope.
 
-
 == Method
 
-The Language Translation Quiz game leverages a modern web architecture for a seamless, responsive user experience. The following subsections describe the technical components of the system, including the backend, frontend, database, and essential algorithms for managing quizzes, user progress, and accuracy tracking.
+The Language Translation Quiz game leverages a modern web architecture for a seamless, responsive user experience. The following subsections describe the technical components of the system, including the backend, frontend, database, essential algorithms for managing quizzes, user progress, and accuracy tracking, as well as security and scalability considerations.
 
 === System Architecture
 
 The system is based on a client-server model:
+
 - **Frontend**: Svelte framework will manage user interaction, providing a highly interactive experience. The app will dynamically load quiz questions, display feedback, and update the user’s profile in real-time.
 - **Backend**: Django with Django Ninja will handle the API, processing requests for quiz data, user profiles, accuracy, and leaderboard information. The RESTful API structure facilitates efficient client-server communication, while Django Ninja ensures type-safe endpoints for reliable API responses.
 - **Database**: PostgreSQL is chosen for its robustness in handling relational data. It will store structured data on users, quiz content, hints, accuracy, and speed tracking, with relationships that allow for complex querying as the app scales.
+- **Caching Layer**: Utilize Redis for caching frequently accessed data such as leaderboards and popular quizzes to enhance performance and reduce database load.
+- **Authentication Service**: Leverage Django’s built-in authentication mechanisms, supplemented with OAuth2 for potential social login integrations.
+- **Content Management**: Implement an admin interface for managing quiz content, categories, and translations efficiently.
 
 [plantuml]
 ----
@@ -56,11 +60,19 @@ actor User
 participant "Frontend (Svelte)" as FE
 participant "Backend (Django + Django Ninja)" as BE
 database "Database (PostgreSQL)" as DB
+participant "Caching Layer (Redis)" as Cache
 
 User -> FE: Start Quiz
 FE -> BE: Request Quiz Data
-BE -> DB: Fetch Quiz Questions
-DB --> BE: Return Quiz Data
+BE -> Cache: Check Quiz Data Cache
+alt Cache Hit
+    Cache --> BE: Return Quiz Data
+else Cache Miss
+    BE -> DB: Fetch Quiz Questions
+    DB --> BE: Return Quiz Data
+    BE -> Cache: Cache Quiz Data
+    Cache --> BE: Confirmation
+end
 BE --> FE: Provide Quiz Data
 User -> FE: Submit Answer
 FE -> BE: Send Answer for Validation
@@ -72,53 +84,72 @@ BE --> FE: Feedback to User
 
 === Database Schema
 
-The database will include the following tables:
+The database will include the following normalized tables to ensure data integrity and optimize query performance:
 
 == Users and Profiles
 
-[cols="1,1,1,1"]
+[cols="1,1,1,1,1"]
 |===
 | Table | Field | Type | Description
 
 | User 
 | user_id | SERIAL PRIMARY KEY | Unique identifier for the user
 | username | VARCHAR(50) UNIQUE NOT NULL | Username, unique per user
-| email | VARCHAR(100) | User email address
+| email | VARCHAR(100) UNIQUE NOT NULL | User email address
+| password_hash | VARCHAR(128) NOT NULL | Hashed password for authentication
 | created_at | TIMESTAMP DEFAULT CURRENT_TIMESTAMP | Account creation timestamp
 
 | UserProfile 
 | user_profile_id | SERIAL PRIMARY KEY | Unique identifier for the user profile
 | user_id | INT REFERENCES User(user_id) | Foreign key linking to the user
-| language_preference | VARCHAR(50) | Preferred language for user interface
-| timezone | VARCHAR(50) | User's time zone
+| language_preference | VARCHAR(50) DEFAULT 'en' | Preferred language for user interface
+| timezone | VARCHAR(50) DEFAULT 'UTC' | User's time zone
 | other_preferences | JSONB | JSON field for additional user settings
 |===
-
+    
 == Categories and Questions
 
-[cols="1,1,1,1"]
+[cols="1,1,1,1,1"]
 |===
 | Table | Field | Type | Description
 
 | Category 
 | category_id | SERIAL PRIMARY KEY | Unique identifier for the category
 | name | VARCHAR(50) NOT NULL | Category name, e.g., "Greetings", "Directions"
+| description | TEXT | Description of the category
 
 | Question 
 | question_id | SERIAL PRIMARY KEY | Unique identifier for the question
 | category_id | INT REFERENCES Category(category_id) | Foreign key linking to the category
 | prompt | TEXT NOT NULL | Question text, e.g., "How to greet someone?"
-| correct_translation | TEXT | Correct translation in Kazakh
-| options | JSONB NOT NULL | JSON array of answer options, with one marked as correct
+| correct_option_id | INT REFERENCES Option(option_id) | Foreign key to the correct answer option
 | hint | TEXT | Hint for the question, if applicable
 | difficulty_level | VARCHAR(20) | Difficulty level, e.g., "beginner", "intermediate"
 | created_at | TIMESTAMP DEFAULT CURRENT_TIMESTAMP | Timestamp for question creation
 | updated_at | TIMESTAMP DEFAULT CURRENT_TIMESTAMP | Timestamp for last question update
+
+| Option
+| option_id | SERIAL PRIMARY KEY | Unique identifier for each option
+| question_id | INT REFERENCES Question(question_id) | Foreign key linking to the question
+| text | TEXT NOT NULL | Text of the answer option
+| is_correct | BOOLEAN DEFAULT FALSE | Indicates if this option is the correct answer
 |===
 
+== Distractors and Answer Options
+
+[cols="1,1,1,1,1"]
+|===
+| Table | Field | Type | Description
+
+| DistractorPool
+| distractor_id | SERIAL PRIMARY KEY | Unique identifier for each distractor
+| category_id | INT REFERENCES Category(category_id) | Foreign key linking to the category
+| distractor_text | TEXT | Possible incorrect answer (distractor) for a given category
+|===
+    
 == Quiz and Attempts
 
-[cols="1,1,1,1"]
+[cols="1,1,1,1,1"]
 |===
 | Table | Field | Type | Description
 
@@ -128,6 +159,8 @@ The database will include the following tables:
 | difficulty_level | VARCHAR(20) | Difficulty level of the quiz
 | num_questions | INT | Number of questions in the quiz
 | time_limit | INT | Time limit for the quiz in seconds
+| created_at | TIMESTAMP DEFAULT CURRENT_TIMESTAMP | Timestamp when the quiz was created
+| updated_at | TIMESTAMP DEFAULT CURRENT_TIMESTAMP | Timestamp when the quiz was last updated
 
 | QuizAttempt 
 | quiz_attempt_id | SERIAL PRIMARY KEY | Unique identifier for the quiz attempt
@@ -135,23 +168,23 @@ The database will include the following tables:
 | quiz_id | INT REFERENCES Quiz(quiz_id) | Foreign key linking to the quiz
 | attempted_at | TIMESTAMP DEFAULT CURRENT_TIMESTAMP | Timestamp when the quiz attempt started
 | completed_at | TIMESTAMP | Timestamp when the quiz attempt completed
-| total_correct | INT | Count of correct answers in this attempt
-| total_incorrect | INT | Count of incorrect answers in this attempt
+| total_correct | INT DEFAULT 0 | Count of correct answers in this attempt
+| total_incorrect | INT DEFAULT 0 | Count of incorrect answers in this attempt
 | total_time_taken | INT | Total time taken in seconds
 | accuracy | FLOAT | Accuracy percentage for the quiz attempt
 | passed | BOOLEAN | Indicates if the attempt met the passing criteria
-
+    
 | QuizQuestionAttempt 
 | quiz_question_attempt_id | SERIAL PRIMARY KEY | Unique identifier for the question attempt
 | quiz_attempt_id | INT REFERENCES QuizAttempt(quiz_attempt_id) | Foreign key linking to the quiz attempt
 | question_id | INT REFERENCES Question(question_id) | Foreign key linking to the question
-| selected_option_id | INT | ID of the selected answer option
+| selected_option_id | INT REFERENCES Option(option_id) | ID of the selected answer option
 | is_correct | BOOLEAN | Indicates if the selected option is correct
 |===
-
+    
 == Progress and Achievements
 
-[cols="1,1,1,1"]
+[cols="1,1,1,1,1"]
 |===
 | Table | Field | Type | Description
 
@@ -160,8 +193,8 @@ The database will include the following tables:
 | user_id | INT REFERENCES User(user_id) | Foreign key linking to the user
 | difficulty_level | VARCHAR(20) | Difficulty level tracked in progress
 | category_id | INT REFERENCES Category(category_id) | Foreign key linking to the category
-| quizzes_completed | INT | Number of completed quizzes in this category and level
-| quizzes_passed | INT | Number of successfully passed quizzes
+| quizzes_completed | INT DEFAULT 0 | Number of completed quizzes in this category and level
+| quizzes_passed | INT DEFAULT 0 | Number of successfully passed quizzes
 | best_accuracy | FLOAT | Best accuracy percentage achieved by the user
 | average_time_per_question | FLOAT | Average time taken per question in this category and level
 
@@ -169,59 +202,80 @@ The database will include the following tables:
 | badge_id | SERIAL PRIMARY KEY | Unique identifier for the badge
 | name | VARCHAR(50) NOT NULL | Badge name, e.g., "Beginner Mastery"
 | description | TEXT | Description of the badge criteria
-| requirements | JSONB | JSON field specifying criteria for earning the badge
-
+    
 | UserBadge 
 | user_badge_id | SERIAL PRIMARY KEY | Unique identifier for awarded badges
 | user_id | INT REFERENCES User(user_id) | Foreign key linking to the user
 | badge_id | INT REFERENCES Badge(badge_id) | Foreign key linking to the badge
 | awarded_at | TIMESTAMP DEFAULT CURRENT_TIMESTAMP | Timestamp when the badge was awarded
 |===
-
+    
 == Leaderboards and Statistics
 
-[cols="1,1,1,1"]
+[cols="1,1,1,1,1"]
 |===
 | Table | Field | Type | Description
 
 | UserStats 
 | user_stats_id | SERIAL PRIMARY KEY | Unique identifier for the user's stats
 | user_id | INT REFERENCES User(user_id) | Foreign key linking to the user
-| total_quizzes_completed | INT | Total number of quizzes completed by the user
+| total_quizzes_completed | INT DEFAULT 0 | Total number of quizzes completed by the user
 | average_accuracy | FLOAT | Average accuracy of all completed quizzes
 | average_speed | FLOAT | Average time per question for the user
 |===
 
+    
 == Indexes and Optimization
 
 1. Create indexes on key columns, such as `user_id`, `question_id`, and `category_id`, to improve query performance.
 2. Implement a composite index on `difficulty_level` and `category_id` in the `Question` table if queries frequently filter by both fields.
+3. Use caching for frequently accessed data like leaderboards and popular quizzes to reduce database load and improve response times.
 
-   
-=== Key Algorithms and Quiz Flow
+== Security and Authentication
 
-#### Quiz Generation and Start
+=== User Authentication
+- **Secure Authentication Mechanism**: Utilize Django’s built-in authentication system, ensuring password hashing and secure session management.
+- **OAuth2 Integration**: Provide options for social logins (e.g., Google, Facebook) using OAuth2 for enhanced user convenience.
+- **Password Policies**: Enforce strong password policies, including minimum length, complexity requirements, and regular updates.
+
+=== Data Privacy
+- **Compliance**: Ensure compliance with data protection regulations such as GDPR by implementing necessary privacy policies and data handling procedures.
+- **Data Encryption**: Encrypt sensitive data both in transit (using HTTPS) and at rest (using database encryption mechanisms).
+- **User Data Management**: Allow users to manage their data, including options to delete their accounts and export their data.
+
+=== Input Validation and Security Measures
+- **Input Sanitization**: Implement rigorous input validation to protect against SQL injection, cross-site scripting (XSS), and other vulnerabilities.
+- **Rate Limiting**: Apply rate limiting on API endpoints to prevent abuse and ensure fair usage.
+- **Error Handling**: Define consistent error response formats with meaningful HTTP status codes and messages to avoid exposing sensitive information.
+
+== Key Algorithms and Quiz Flow
+
+=== Quiz Generation and Start
 - When a user initiates a quiz, they provide `Category` and `Difficulty` preferences.
-- The backend retrieves a matching `Quiz` object based on category and difficulty level, with a JSON array of question IDs for the set.
-- Questions and options are shuffled:
-  - **Question Order**: The list of questions in the quiz is randomized.
-  - **Option Order**: For each question, the position of the four options is also shuffled.
-  - This ensures users cannot memorize option patterns to pass the quiz without learning.
+- The backend retrieves a matching `Quiz` object based on category and difficulty level, selecting a set of question IDs.
+- **Question and Option Shuffling**:
+  - **Question Order**: Randomize the list of questions in the quiz.
+  - **Option Order**: Shuffle the position of the answer options for each question.
+  - This prevents users from memorizing answer patterns and encourages genuine learning.
+- **Distractor Integration**:
+  - Utilize the `DistractorPool` to select plausible incorrect options, enhancing question variety and challenge.
 - **Progress Tracking**: 
-   - After each `QuizAttempt`, update the `UserProgress` table to increment `quizzes_completed` and, if passed, `quizzes_passed`.
-   - Check the user's cumulative quizzes to determine if they meet criteria for difficulty level upgrades.
-
+  - After each `QuizAttempt`, update the `UserProgress` table to increment `quizzes_completed` and, if passed, `quizzes_passed`.
+  - Assess cumulative quizzes to determine eligibility for difficulty level upgrades.
+  
 - **Badge Assignment**:
-   - For milestones such as passing all beginner-level quizzes in a category, assign a badge.
-   - Update the `UserProgress` table to mark `badge_awarded` as `True` and log the specific `badge_id` in the user profile.
+  - Assign badges for milestones, such as passing all beginner-level quizzes in a category.
+  - Update the `UserProgress` table and `UserBadge` records accordingly.
 
-#### Answer Validation and User Progress Tracking
-- **Answer Submission**: When a user submits an answer for a question, the backend checks `is_correct` in the `Option` table to validate it.
-- **Progress Update**: `QuizAttempt` entries are updated per quiz attempt, storing metrics such as the number of correct answers and total time taken. The `accuracy` field helps users gauge their retention and progress in each category and difficulty level.
+=== Answer Validation and User Progress Tracking
+- **Answer Submission**: Validate the selected option against the correct answer in the `Option` table.
+- **Progress Update**: Update `QuizAttempt` entries with metrics like correct answers and total time taken. Calculate `accuracy` to reflect user retention and progress.
+- **Feedback Mechanism**: Provide immediate feedback on answer correctness, along with hints if enabled.
 
 === Example Quiz Request and Response Flow
 
 When a user sends a quiz request:
+
 1. **Request**: Contains the desired category and difficulty level.
 2. **Response**: The backend returns:
    - `quiz_id`: Identifier for the quiz.
@@ -234,77 +288,90 @@ When a user sends a quiz request:
      - `prompt`: Text of the question.
      - `options`: List of option texts, shuffled on each request.
    - `passing_criteria`: Number of correct answers needed to pass.
+   
+The backend dynamically shuffles options and questions on each quiz request, ensuring each attempt feels unique while retaining the underlying quiz structure.
 
-The backend will dynamically shuffle options and questions on each quiz request, which allows each attempt to feel unique while retaining the underlying structure of the quiz.
-
-#### Progress Tracking and Analytics
-- After each quiz attempt, `QuizAttempt` updates with time taken, total correct answers, and calculated accuracy.
+=== Progress Tracking and Analytics
+- After each quiz attempt, `QuizAttempt` is updated with time taken, total correct answers, and calculated accuracy.
 - Users can view past attempts to identify areas needing improvement.
+- Analytics dashboards for administrators to monitor user engagement and content effectiveness.
 
 == Implementation
 
-This section outlines the implementation steps needed to build the Language Translation Quiz Game. Each step details the core components, API endpoints, and the flow for handling quizzes, tracking user progress, and managing categories.
+This section outlines the implementation steps needed to build the Language Translation Quiz Game. Each step details the core components, API endpoints, and the flow for handling quizzes, tracking user progress, and managing categories, along with security and scalability considerations.
 
 === Step 1: Backend Setup with Django and Django Ninja
 
 1. **Initialize Django Project and Applications**:
    - Create a Django project and an app (e.g., `quiz_app`) to manage the quiz game logic and database models.
+   - Set up virtual environments and manage dependencies using tools like `pipenv` or `poetry`.
 
 2. **Database Models**:
-   - Define models based on the schema described:
+   - Define models based on the updated schema:
      - **Category**
      - **Question**
      - **Option**
      - **Quiz**
      - **User**
      - **QuizAttempt**
+     - **QuizQuestionAttempt**
      - **UserProgress**
      - **Badge**
+     - **UserBadge**
 
 3. **Migrations**:
    - Run migrations to set up the database schema.
+   - Seed the database with initial data for categories, questions, options, and badges.
 
 4. **API Setup with Django Ninja**:
    - Configure Django Ninja for RESTful API management.
    - Set up type-safe endpoints for quiz generation, question validation, user profile retrieval, leaderboard data, and progress tracking.
    - Include endpoints for retrieving badges and checking progress toward level or badge achievements.
+   - Implement API versioning to manage future changes without disrupting existing clients.
+
+5. **Authentication and Security**:
+   - Integrate Django’s authentication system.
+   - Implement OAuth2 for social login options if required.
+   - Set up secure session management and CSRF protection.
 
 === Step 2: Key API Endpoints
 
-The following endpoints will handle the main functionalities of the quiz game:
+The following endpoints will handle the main functionalities of the quiz game, incorporating versioning and robust error handling.
 
 1. **Endpoint: Start Quiz**
-   - **URL**: `/api/quiz/start`
+   - **URL**: `/api/v1/quiz/start`
    - **Method**: `POST`
    - **Request Body**: `{ "category_id": int, "difficulty_level": "string" }`
    - **Response**: Returns a quiz object with questions and options, shuffled for randomization.
    - **Process**:
      - Retrieve or generate a `Quiz` object based on `category_id` and `difficulty_level`.
      - Create a `QuizAttempt` entry for tracking progress.
+     - Shuffle questions and options.
      - Respond with `quiz_id`, shuffled questions, and options.
 
 2. **Endpoint: Submit Answer**
-   - **URL**: `/api/quiz/answer`
+   - **URL**: `/api/v1/quiz/answer`
    - **Method**: `POST`
    - **Request Body**: `{ "quiz_attempt_id": int, "question_id": int, "selected_option_id": int }`
    - **Response**: Returns feedback on whether the answer is correct.
    - **Process**:
-     - Check if `selected_option_id` matches the correct option in the `Option` table.
+     - Validate `selected_option_id` against the correct option in the `Option` table.
      - Update the `QuizAttempt` entry, incrementing `total_correct` or `total_incorrect`.
      - Respond with confirmation of correctness and updated progress.
 
 3. **Endpoint: Complete Quiz**
-   - **URL**: `/api/quiz/complete`
+   - **URL**: `/api/v1/quiz/complete`
    - **Method**: `POST`
    - **Request Body**: `{ "quiz_attempt_id": int }`
    - **Response**: Returns the quiz result summary, including accuracy and time taken.
    - **Process**:
      - Calculate accuracy (`total_correct / num_questions`) and store `completed_at`.
      - Update `passed` based on `passing_criteria`.
+     - Assign badges if criteria are met.
      - Respond with `QuizAttempt` summary, showing metrics and pass/fail status.
 
 4. **Endpoint: Get User Profile**
-   - **URL**: `/api/user/profile`
+   - **URL**: `/api/v1/user/profile`
    - **Method**: `GET`
    - **Response**: Returns user profile details with a history of past quiz attempts.
    - **Process**:
@@ -312,28 +379,45 @@ The following endpoints will handle the main functionalities of the quiz game:
      - Calculate overall metrics like average accuracy and total quizzes completed.
 
 5. **Endpoint: Get Leaderboard**
-   - **URL**: `/api/leaderboard`
+   - **URL**: `/api/v1/leaderboard`
    - **Method**: `GET`
    - **Response**: Returns a list of top users ranked by accuracy and speed.
    - **Process**:
      - Retrieve `QuizAttempt` records and calculate leaderboard rankings based on average accuracy and average time taken.
+     - Utilize caching to enhance performance.
 
 6. **Endpoint: Check Progress**
-   - **URL**: `/api/user/progress`
+   - **URL**: `/api/v1/user/progress`
    - **Method**: `GET`
    - **Response**: Returns user progress, showing quizzes completed, quizzes passed, and earned badges.
    - **Process**: 
       - Retrieve data from `UserProgress` and `Badge` tables.
       - Check if additional badges or level advancements are eligible, returning relevant progress data for the frontend.
 
-7. **Update Complete Quiz Endpoint**
-   - **Process Update**: After validating the quiz results, update `UserProgress` to increment completed and passed quizzes.
-   - Check if this quiz completion triggers a new badge or level advancement based on cumulative data, and update `Badge` records as needed.
+7. **Endpoint: User Authentication**
+   - **URL**: `/api/v1/auth/login`
+   - **Method**: `POST`
+   - **Request Body**: `{ "username": "string", "password": "string" }`
+   - **Response**: Returns authentication token or session details.
+   - **Process**:
+     - Validate user credentials.
+     - Initiate user session or provide JWT tokens for authentication.
+
+8. **Endpoint: Register User**
+   - **URL**: `/api/v1/auth/register`
+   - **Method**: `POST`
+   - **Request Body**: `{ "username": "string", "email": "string", "password": "string" }`
+   - **Response**: Confirmation of account creation.
+   - **Process**:
+     - Validate input data.
+     - Create new user account with hashed password.
+     - Send verification email if required.
 
 === Step 3: Frontend with Svelte
 
 1. **Svelte Project Setup**:
-   - Initialize a new Svelte project for the frontend.
+   - Initialize a new Svelte project for the frontend using tools like `SvelteKit` for enhanced routing and server-side rendering.
+   - Configure environment variables and set up build scripts.
 
 2. **UI Components**:
    - **Quiz Component**: Displays questions and options, receives responses, and shows feedback, highlighting progress toward badges or level advancements when applicable.
@@ -341,6 +425,7 @@ The following endpoints will handle the main functionalities of the quiz game:
    - **Leaderboard Component**: Displays top users and refreshes based on backend data.
    - **Profile Component**: Shows user statistics, including quizzes completed, quizzes passed, accuracy, and earned badges.
    - **Badge Display Component**: Displays earned badges and progress toward new badges, providing visual feedback for achievements and learning milestones.
+   - **Authentication Components**: Login and registration forms with validation and error handling.
 
 3. **Modular Component Structure**:
    - **Main Quiz Page Layout**:
@@ -352,7 +437,6 @@ The following endpoints will handle the main functionalities of the quiz game:
    - **Reusable Components within the Quiz**:
      - **QuestionPrompt.svelte**: Displays the text prompt for each question. This component can be used across different quiz types if more question formats are added.
      - **OptionButton.svelte**: A button component for each answer option, including styling, selection state, and any accessibility features.
-     - **AnswerFeedback.svelte**: Displays feedback (e.g., correct/incorrect animations or text) when an answer is submitted. It can also expand to show hints or additional context if the answer is incorrect.
      - **HintButton.svelte**: For displaying hints when a user requests help, with easy modification to add additional hint features.
    - **Tracking and Scoring Components**:
      - **ProgressTracker.svelte**: Tracks and displays the user’s current question number, accuracy, and time remaining.
@@ -369,39 +453,105 @@ The following endpoints will handle the main functionalities of the quiz game:
      - **Notification.svelte**: Generic component to show in-app notifications, such as "Quiz completed!" or "New badge earned!"
 
 4. **API Integration**:
-   - Set up API calls to each endpoint.
+   - Set up API calls to each endpoint using `fetch` or a library like `axios`.
    - Handle quiz start, answer submission, and completion with data passed to the backend.
    - Display real-time feedback, track user progress, and show badge achievements or level advancements based on backend responses.
+   - Manage authentication tokens securely, storing them in HTTP-only cookies or secure storage mechanisms.
 
+5. **Responsive Design and Accessibility**:
+   - Ensure the application is responsive and user-friendly across various devices and screen sizes.
+   - Follow accessibility guidelines (e.g., WCAG) to make the application usable for individuals with disabilities.
 
 === Step 4: Testing and Quality Assurance
 
 1. **Unit Tests**:
-   - Test individual API endpoints for correct responses, status codes, and data handling.
-   - Ensure accuracy calculations, timer limits, and `QuizAttempt` data are correctly handled.
+   - **Backend**:
+     - Test individual API endpoints for correct responses, status codes, and data handling.
+     - Ensure accuracy calculations, timer limits, and `QuizAttempt` data are correctly handled.
+   - **Frontend**:
+     - Test individual Svelte components for proper rendering, state management, and interaction handling.
 
 2. **Integration Tests**:
    - Validate end-to-end flow from starting a quiz to completion.
    - Test frontend interactions with the backend API to ensure smooth gameplay.
+   - Utilize tools like `Jest` and `Cypress` for comprehensive testing coverage.
 
-3. **User Testing**:
+3. **Performance Testing**:
+   - Conduct load testing using tools like `JMeter` or `Locust` to ensure the application performs well under stress.
+   - Optimize database queries and backend processing to handle high traffic scenarios.
+
+4. **User Testing**:
    - Conduct usability testing to verify that users can navigate quizzes and track progress without confusion.
    - Gather feedback on question variety, answer shuffling, and time limits for each difficulty level.
+   - Implement A/B testing for different UI/UX elements to determine optimal designs.
+
+5. **Automated Testing Pipelines**:
+   - Implement continuous integration/continuous deployment (CI/CD) pipelines with automated testing using tools like GitHub Actions, Jenkins, or GitLab CI.
+   - Ensure that tests are run on each commit and before deployments to catch issues early.
 
 === Step 5: Deployment and Monitoring
 
 1. **Backend Deployment**:
-   - Deploy the Django application and database to a cloud platform like AWS or DigitalOcean.
-   - Set up automated backups for PostgreSQL and monitoring for API health.
+   - Deploy the Django application and PostgreSQL database to a cloud platform like AWS, DigitalOcean, or Heroku.
+   - Use containerization with Docker for consistent environments across development and production.
+   - Set up orchestration with Kubernetes if necessary for scalability.
+   - Implement automated backups for PostgreSQL and monitoring for API health using tools like Prometheus and Grafana.
 
 2. **Frontend Deployment**:
    - Deploy the Svelte application to a hosting service like Vercel or Netlify.
-   - Configure HTTPS and monitor performance metrics.
+   - Configure HTTPS and set up CDN for faster content delivery.
+   - Monitor performance metrics and set up alerts for downtime or performance degradation.
 
-3. **Logging and Analytics**:
-   - Set up logging to track user interactions, quiz completion rates, and errors.
-   - Use analytics to monitor popular categories, average quiz durations, and accuracy rates.
+3. **Caching and CDN**:
+   - Utilize Redis for backend caching.
+   - Employ CDN services for static assets to improve load times globally.
 
+4. **Logging and Analytics**:
+   - Set up logging to track user interactions, quiz completion rates, and errors using tools like ELK Stack (Elasticsearch, Logstash, Kibana).
+   - Use analytics platforms like Google Analytics or Mixpanel to monitor user engagement and behavior.
+   - Implement real-time monitoring dashboards to oversee application performance and user activity.
+
+5. **Security Monitoring**:
+   - Continuously monitor for security threats and vulnerabilities using services like Snyk or OWASP ZAP.
+   - Apply regular security patches and updates to all components.
+
+=== Step 6: User Feedback and Iterative Improvements
+
+1. **Collect User Feedback**:
+   - Implement in-app feedback forms and surveys to gather user insights.
+   - Allow users to report errors in questions or suggest improvements directly through the application.
+
+2. **Analyze Feedback and Data**:
+   - Use analytics data to identify popular categories, average quiz durations, and common user drop-off points.
+   - Prioritize features and improvements based on user feedback and data-driven insights.
+
+3. **Implement Iterative Enhancements**:
+   - Refine question and option handling, adjust passing criteria if needed.
+   - Enhance UI/UX based on usability test results.
+   - Optimize backend performance and scalability based on load testing outcomes.
+
+4. **Expand Features Based on Feedback**:
+   - Introduce new categories or difficulty levels as requested by users.
+   - Implement additional gamification elements like daily challenges or streak rewards.
+
+5. **Continuous Improvement Cycle**:
+   - Maintain an agile development process to iteratively release updates and enhancements.
+   - Regularly review and adjust development priorities based on evolving user needs and technological advancements.
+
+=== Step 7: Documentation
+
+1. **Technical Documentation**:
+   - Create comprehensive documentation for developers, including API documentation using tools like Swagger or Redoc integrated with Django Ninja.
+   - Provide system architecture diagrams, database schemas, and code comments for better maintainability.
+   - Document deployment processes, environment configurations, and CI/CD pipelines.
+
+2. **User Documentation**:
+   - Develop help guides or tutorials within the app to assist new users in navigating and utilizing the quiz features.
+   - Create FAQ sections to address common user queries and issues.
+
+3. **Admin Documentation**:
+   - Provide guides for administrators on managing quiz content, handling user reports, and monitoring system performance.
+   - Document workflows for content approval and quality assurance.
 
 == Milestones
 
@@ -414,49 +564,54 @@ The following milestones break down the development process into actionable phas
   - Set up PostgreSQL database and configure environment variables.
   - Configure Django Ninja and set up initial endpoints.
   - Basic setup of API integration for Svelte.
-- **Expected Output**: Working development environment with both backend and frontend set up.
+  - Implement secure authentication mechanisms.
+- **Expected Output**: Working development environment with both backend and frontend set up, including user authentication.
 
 === Milestone 2: Database Model Implementation
 - **Objective**: Build and verify database models based on the designed schema.
 - **Tasks**:
-  - Implement `Category`, `Question`, `Option`, `Quiz`, `User`, and `QuizAttempt` models in Django.
+  - Implement `Category`, `Question`, `Option`, `Quiz`, `User`, `QuizAttempt`, `QuizQuestionAttempt`, `UserProgress`, `Badge`, and `UserBadge` models in Django.
   - Write initial migration files and apply them to set up the database.
-  - Add basic data for testing (e.g., example questions, options, and quizzes).
-- **Expected Output**: Fully defined database schema with initial test data.
+  - Add basic data for testing (e.g., example questions, options, quizzes, and badges).
+- **Expected Output**: Fully defined and normalized database schema with initial test data.
 
 === Milestone 3: API Development
 - **Objective**: Develop and test all core API endpoints for quiz functionality.
 - **Tasks**:
-  - Implement and test the `Start Quiz`, `Submit Answer`, `Complete Quiz`, `Get User Profile`, and `Get Leaderboard` endpoints.
+  - Implement and test the `Start Quiz`, `Submit Answer`, `Complete Quiz`, `Get User Profile`, `Get Leaderboard`, and authentication endpoints.
   - Verify data handling, accuracy calculation, and passing criteria functionality.
   - Conduct initial unit tests for each endpoint to ensure reliability.
-- **Expected Output**: Fully functional API with all endpoints tested and validated.
+  - Implement API versioning and robust error handling.
+- **Expected Output**: Fully functional API with all endpoints tested and validated, including secure authentication.
 
 === Milestone 4: Frontend Component Development
 - **Objective**: Build the Svelte UI components and integrate them with the backend API.
 - **Tasks**:
-  - Develop and style components: Quiz, Timer, Profile, and Leaderboard.
+  - Develop and style components: Quiz, Timer, Profile, Leaderboard, Authentication forms, and Badge Display.
   - Implement API integration for quiz start, answer submission, and leaderboard updates.
   - Add UI for displaying real-time feedback and timing.
-- **Expected Output**: Interactive frontend with real-time quiz feedback and leaderboard functionality.
+  - Ensure responsive design and accessibility compliance.
+- **Expected Output**: Interactive frontend with real-time quiz feedback, leaderboard functionality, and secure user authentication.
 
 === Milestone 5: Testing and Quality Assurance
 - **Objective**: Perform comprehensive testing to ensure seamless user experience and data accuracy.
 - **Tasks**:
-  - Complete unit and integration tests for all API endpoints.
-  - Conduct frontend integration tests for each component.
+  - Complete unit and integration tests for all API endpoints and frontend components.
+  - Conduct performance testing to ensure scalability.
   - Run usability tests to verify intuitive navigation and functionality.
   - Refine any user flow or backend logic based on test feedback.
-- **Expected Output**: Verified and optimized backend and frontend with high reliability.
+  - Set up automated testing pipelines within the CI/CD process.
+- **Expected Output**: Verified and optimized backend and frontend with high reliability and performance under load.
 
 === Milestone 6: Deployment and Monitoring Setup
 - **Objective**: Deploy the application to production and configure monitoring for ongoing support.
 - **Tasks**:
-  - Deploy the Django backend to a cloud platform, set up database backups.
-  - Deploy the Svelte frontend to a hosting service.
-  - Configure monitoring for API uptime, performance metrics, and error logging.
-  - Set up basic analytics to track user engagement and quiz completion rates.
-- **Expected Output**: Production-ready application with monitoring and analytics in place.
+  - Deploy the Django backend to a cloud platform, set up database backups, and configure environment variables securely.
+  - Deploy the Svelte frontend to a hosting service with CDN integration.
+  - Configure HTTPS and set up DNS settings.
+  - Implement monitoring for API uptime, performance metrics, and error logging using tools like Prometheus, Grafana, and ELK Stack.
+  - Set up caching mechanisms with Redis and configure rate limiting.
+- **Expected Output**: Production-ready application with monitoring, caching, and security measures in place.
 
 === Milestone 7: User Feedback and Iterative Improvements
 - **Objective**: Collect and implement feedback for feature enhancement and overall experience.
@@ -464,5 +619,13 @@ The following milestones break down the development process into actionable phas
   - Analyze initial user feedback and identify improvement areas.
   - Refine question and option handling, adjust passing criteria if needed.
   - Implement updates to UI/UX and backend logic based on user insights.
-- **Expected Output**: Improved and finalized application based on real user feedback.
+  - Expand features like adaptive learning paths and additional gamification elements.
+- **Expected Output**: Improved and finalized application based on real user feedback, with enhanced features and optimized user experience.
 
+=== Milestone 8: Documentation and Training
+- **Objective**: Provide comprehensive documentation for developers, administrators, and users.
+- **Tasks**:
+  - Finalize technical documentation, including API references and system architecture.
+  - Develop user guides and in-app tutorials for end-users.
+  - Create admin manuals for managing content and monitoring system health.
+- **Expected Output**: Complete set of documentation facilitating easy maintenance, user onboarding, and content management.
