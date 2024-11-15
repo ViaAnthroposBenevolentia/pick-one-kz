@@ -134,18 +134,6 @@ The database will include the following normalized tables to ensure data integri
 | text | TEXT NOT NULL | Text of the answer option
 | is_correct | BOOLEAN DEFAULT FALSE | Indicates if this option is the correct answer
 |===
-
-== Distractors and Answer Options
-
-[cols="1,1,1,1,1"]
-|===
-| Table | Field | Type | Description
-
-| DistractorPool
-| distractor_id | SERIAL PRIMARY KEY | Unique identifier for each distractor
-| category_id | INT REFERENCES Category(category_id) | Foreign key linking to the category
-| distractor_text | TEXT | Possible incorrect answer (distractor) for a given category
-|===
     
 == Quiz and Attempts
 
